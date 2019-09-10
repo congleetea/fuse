@@ -39,11 +39,15 @@
 #include <fuse_core/eigen.h>
 #include <fuse_core/eigen_gtest.h>
 #include <fuse_core/macros.h>
+#include <fuse_core/serialization.h>
 #include <fuse_core/uuid.h>
 #include <fuse_core/variable.h>
 #include <fuse_graphs/hash_graph.h>
 #include <fuse_variables/orientation_3d_stamped.h>
 
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/serialization/export.hpp>
 #include <ceres/cost_function.h>
 #include <gtest/gtest.h>
 
@@ -58,29 +62,42 @@
 class GenericVariable : public fuse_core::Variable
 {
 public:
-  SMART_PTR_DEFINITIONS(GenericVariable);
+  FUSE_VARIABLE_DEFINITIONS(GenericVariable);
 
   GenericVariable() :
-    Variable(),
-    data_{},
-    uuid_{fuse_core::uuid::generate()}
+    fuse_core::Variable(fuse_core::uuid::generate()),
+    data_{}
   {}
-
-  fuse_core::UUID uuid() const override { return uuid_; }
 
   size_t size() const override { return 1; }
 
   const double* data() const override { return &data_; }
   double* data() override { return &data_; }
 
-  void print(std::ostream& stream = std::cout) const override {}
-
-  fuse_core::Variable::UniquePtr clone() const override { return GenericVariable::make_unique(*this); }
+  void print(std::ostream& /*stream = std::cout*/) const override {}
 
 protected:
   double data_;
-  fuse_core::UUID uuid_;
+
+private:
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
+
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & boost::serialization::base_object<fuse_core::Variable>(*this);
+    archive & data_;
+  }
 };
+
+BOOST_CLASS_EXPORT(GenericVariable);
 
 /**
  * @brief Create a simple Constraint implementation for testing
@@ -88,21 +105,36 @@ protected:
 class GenericConstraint : public fuse_core::Constraint
 {
 public:
-  SMART_PTR_DEFINITIONS(GenericConstraint);
+  FUSE_CONSTRAINT_DEFINITIONS(GenericConstraint);
 
-  GenericConstraint(std::initializer_list<fuse_core::UUID> variable_uuids) : Constraint(variable_uuids) {}
+  GenericConstraint(std::initializer_list<fuse_core::UUID> variable_uuids) :
+    Constraint("test", variable_uuids) {}
 
   explicit GenericConstraint(const fuse_core::UUID& variable1) :
-    fuse_core::Constraint{variable1} {}
+    fuse_core::Constraint("test", {variable1}) {}
 
   GenericConstraint(const fuse_core::UUID& variable1, const fuse_core::UUID& variable2) :
-    fuse_core::Constraint{variable1, variable2} {}
+    fuse_core::Constraint("test", {variable1, variable2}) {}
 
-  void print(std::ostream& stream = std::cout) const override {}
+  void print(std::ostream& /*stream = std::cout*/) const override {}
 
   ceres::CostFunction* costFunction() const override { return nullptr; }
 
-  fuse_core::Constraint::UniquePtr clone() const override { return GenericConstraint::make_unique(*this); }
+private:
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
+
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & boost::serialization::base_object<fuse_core::Constraint>(*this);
+  }
 };
 
 
@@ -173,7 +205,7 @@ TEST(MarginalizeVariables, Linearize)
   delta << 0.979795897, 0.0, 0.0, 0.2;
   fuse_core::Matrix3d cov;
   cov << 1.0, 0.0, 0.0,   0.0, 2.0, 0.0,   0.0, 0.0, 3.0;
-  auto constraint = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(*x1, *x2, delta, cov);
+  auto constraint = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared("test", *x1, *x2, delta, cov);
 
   auto graph = fuse_graphs::HashGraph();
   graph.addVariable(x1);
@@ -229,16 +261,16 @@ TEST(MarginalizeVariables, MarginalizeNext)
   term1.b = b1;
 
   auto term2 = fuse_constraints::detail::LinearTerm();
-  term2.variables.push_back(1);
   term2.variables.push_back(3);
+  term2.variables.push_back(1);
   auto A21 = fuse_core::MatrixXd(3, 3);
-  A21 << -0.91999992754510684367,    -0.39191852892782985673,    -2.8735440640859089001e-07,
-          0.27712824947756498073,    -0.6505381874582485402,     -2.5352112979770691226e-07,
-          7.1505019336171038447e-08,  2.5546009342625186633e-07, -0.57735026918958520792;
-  auto A22 = fuse_core::MatrixXd(3, 3);
-  A22 << 0.99999999999996114219,    -1.8482708254510815671e-07, -2.873543621662033587e-07,
+  A21 << 0.99999999999996114219,    -1.8482708254510815671e-07, -2.873543621662033587e-07,
          1.3069243487082160549e-07,  0.70710678118650927004,    -2.5352115484711390536e-07,
          1.6590414383954588118e-07,  2.0699913566568639567e-07,  0.57735026918958520792;
+  auto A22 = fuse_core::MatrixXd(3, 3);
+  A22 << -0.91999992754510684367,    -0.39191852892782985673,    -2.8735440640859089001e-07,
+          0.27712824947756498073,    -0.6505381874582485402,     -2.5352112979770691226e-07,
+          7.1505019336171038447e-08,  2.5546009342625186633e-07, -0.57735026918958520792;
   term2.A.push_back(A21);
   term2.A.push_back(A22);
   auto b2 = fuse_core::VectorXd(3);
@@ -302,25 +334,29 @@ TEST(MarginalizeVariables, MarginalizeVariables)
   mean1 << 0.92736185, 0.1, 0.2, 0.3;
   fuse_core::Matrix3d cov1;
   cov1 << 1.0, 0.0, 0.0,  0.0, 2.0, 0.0,  0.0, 0.0, 3.0;
-  auto prior_x1 = fuse_constraints::AbsoluteOrientation3DStampedConstraint::make_shared(*x1, mean1, cov1);
+  auto prior_x1 = fuse_constraints::AbsoluteOrientation3DStampedConstraint::make_shared(
+    "test", *x1, mean1, cov1);
 
   fuse_core::Vector4d delta2;
   delta2 << 0.979795897, 0.0, 0.0, 0.2;
   fuse_core::Matrix3d cov2;
   cov2 << 1.0, 0.0, 0.0,   0.0, 2.0, 0.0,   0.0, 0.0, 3.0;
-  auto relative_x1_x2 = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(*x1, *x2, delta2, cov2);
+  auto relative_x1_x2 = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(
+    "test", *x1, *x2, delta2, cov2);
 
   fuse_core::Vector4d delta3;
   delta3 << 0.979795897, 0.0, 0.0, 0.2;
   fuse_core::Matrix3d cov3;
   cov3 << 1.0, 0.0, 0.0,   0.0, 2.0, 0.0,   0.0, 0.0, 3.0;
-  auto relative_x2_x3 = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(*x2, *x3, delta3, cov3);
+  auto relative_x2_x3 = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(
+    "test", *x2, *x3, delta3, cov3);
 
   fuse_core::Vector4d delta4;
   delta4 << 0.979795897, 0.2, 0.0, 0.0;
   fuse_core::Matrix3d cov4;
   cov4 << 1.0, 0.0, 0.0,   0.0, 2.0, 0.0,   0.0, 0.0, 3.0;
-  auto relative_x2_l1 = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(*x2, *l1, delta4, cov4);
+  auto relative_x2_l1 = fuse_constraints::RelativeOrientation3DStampedConstraint::make_shared(
+    "test", *x2, *l1, delta4, cov4);
 
   // Add to the graph
   auto graph = fuse_graphs::HashGraph();
@@ -352,7 +388,7 @@ TEST(MarginalizeVariables, MarginalizeVariables)
   const auto& expected_l1_cov = expected_covariances[2];
 
   // Marginalize out X1
-  auto transaction = fuse_constraints::marginalizeVariables({x1->uuid()}, graph);  // NOLINT
+  auto transaction = fuse_constraints::marginalizeVariables("test", {x1->uuid()}, graph);  // NOLINT
 
   // Verify the computed transaction
   auto added_variables = transaction.addedVariables();

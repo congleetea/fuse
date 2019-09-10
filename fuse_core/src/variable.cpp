@@ -33,9 +33,16 @@
  */
 #include <fuse_core/variable.h>
 
+#include <ostream>
+
 
 namespace fuse_core
 {
+
+Variable::Variable(const UUID& uuid) :
+  uuid_(uuid)
+{
+}
 
 std::ostream& operator <<(std::ostream& stream, const Variable& variable)
 {

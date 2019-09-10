@@ -35,7 +35,12 @@
 #define FUSE_VARIABLES_FIXED_SIZE_VARIABLE_H
 
 #include <fuse_core/macros.h>
+#include <fuse_core/serialization.h>
 #include <fuse_core/variable.h>
+
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/serialization/array.hpp>
 
 #include <array>
 
@@ -53,7 +58,7 @@ namespace fuse_variables
  * where the size of the state vector is known at compile time...which should be almost all variable types. The
  * dimension of typical variable types (points, poses, calibration parameters) are all known at design/compile time.
  */
-template<size_t N>
+template <size_t N>
 class FixedSizeVariable : public fuse_core::Variable
 {
 public:
@@ -65,10 +70,15 @@ public:
   constexpr static size_t SIZE = N;
 
   /**
+   * @brief Default constructor
+   */
+  FixedSizeVariable() = default;
+
+  /**
    * @brief Constructor
    */
-  FixedSizeVariable() :
-    Variable(),
+  explicit FixedSizeVariable(const fuse_core::UUID& uuid) :
+    fuse_core::Variable(uuid),
     data_{}  // zero-initialize the data array
   {}
 
@@ -106,10 +116,26 @@ public:
 
 protected:
   std::array<double, N> data_;  //!< Fixed-sized, contiguous memory for holding the variable data members
+
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
+
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & boost::serialization::base_object<fuse_core::Variable>(*this);
+    archive & data_;
+  }
 };
 
-// Define the constant that was decalred above
-template<size_t N>
+// Define the constant that was declared above
+template <size_t N>
 constexpr size_t FixedSizeVariable<N>::SIZE;
 }  // namespace fuse_variables
 

@@ -34,11 +34,16 @@
 #ifndef FUSE_VARIABLES_ACCELERATION_ANGULAR_3D_STAMPED_H
 #define FUSE_VARIABLES_ACCELERATION_ANGULAR_3D_STAMPED_H
 
-#include <fuse_core/macros.h>
 #include <fuse_core/uuid.h>
+#include <fuse_core/serialization.h>
+#include <fuse_core/variable.h>
 #include <fuse_variables/fixed_size_variable.h>
 #include <fuse_variables/stamped.h>
 #include <ros/time.h>
+
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/serialization/export.hpp>
 
 #include <ostream>
 
@@ -53,10 +58,10 @@ namespace fuse_variables
  * This is commonly used to represent a robot's acceleration. The UUID of this class is static after construction.
  * As such, the timestamp and device id cannot be modified. The value of the acceleration can be modified.
  */
-class AccelerationAngular3DStamped final : public FixedSizeVariable<3>, public Stamped
+class AccelerationAngular3DStamped : public FixedSizeVariable<3>, public Stamped
 {
 public:
-  SMART_PTR_DEFINITIONS(AccelerationAngular3DStamped);
+  FUSE_VARIABLE_DEFINITIONS(AccelerationAngular3DStamped);
 
   /**
    * @brief Can be used to directly index variables in the data array
@@ -67,6 +72,11 @@ public:
     PITCH = 1,
     YAW = 2
   };
+
+  /**
+   * @brief Default constructor
+   */
+  AccelerationAngular3DStamped() = default;
 
   /**
    * @brief Construct a 3D angular acceleration at a specific point in time.
@@ -109,30 +119,32 @@ public:
   const double& yaw() const { return data_[YAW]; }
 
   /**
-   * @brief Read-only access to the unique ID of this variable instance.
-   *
-   * All variables of this type with identical timestamps will return the same UUID.
-   */
-  fuse_core::UUID uuid() const override { return uuid_; }
-
-  /**
    * @brief Print a human-readable description of the variable to the provided stream.
    *
    * @param[out] stream The stream to write to. Defaults to stdout.
    */
   void print(std::ostream& stream = std::cout) const override;
 
-  /**
-   * @brief Perform a deep copy of the Variable and return a unique pointer to the copy
-   *
-   * @return A unique pointer to a new instance of the most-derived Variable
-   */
-  fuse_core::Variable::UniquePtr clone() const override;
+private:
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
 
-protected:
-  fuse_core::UUID uuid_;  //!< The UUID for this instance, computed during construction
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & boost::serialization::base_object<FixedSizeVariable<SIZE>>(*this);
+    archive & boost::serialization::base_object<Stamped>(*this);
+  }
 };
 
 }  // namespace fuse_variables
+
+BOOST_CLASS_EXPORT_KEY(fuse_variables::AccelerationAngular3DStamped);
 
 #endif  // FUSE_VARIABLES_ACCELERATION_ANGULAR_3D_STAMPED_H

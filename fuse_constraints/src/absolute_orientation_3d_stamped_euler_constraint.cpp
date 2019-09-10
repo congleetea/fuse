@@ -32,11 +32,15 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 #include <fuse_constraints/absolute_orientation_3d_stamped_euler_constraint.h>
-#include <fuse_constraints/normal_prior_orientation_3d_euler_cost_functor.h>
 
+#include <fuse_constraints/normal_prior_orientation_3d_euler_cost_functor.h>
+#include <pluginlib/class_list_macros.h>
+
+#include <boost/serialization/export.hpp>
 #include <ceres/autodiff_cost_function.h>
 #include <Eigen/Dense>
 
+#include <string>
 #include <vector>
 
 
@@ -44,11 +48,12 @@ namespace fuse_constraints
 {
 
 AbsoluteOrientation3DStampedEulerConstraint::AbsoluteOrientation3DStampedEulerConstraint(
+  const std::string& source,
   const fuse_variables::Orientation3DStamped& orientation,
   const fuse_core::VectorXd& mean,
   const fuse_core::MatrixXd& covariance,
   const std::vector<Euler> &axes) :
-    fuse_core::Constraint{orientation.uuid()},
+    fuse_core::Constraint(source, {orientation.uuid()}),  // NOLINT(whitespace/braces)
     mean_(mean),
     sqrt_information_(covariance.inverse().llt().matrixU()),
     axes_(axes)
@@ -66,15 +71,11 @@ fuse_core::MatrixXd AbsoluteOrientation3DStampedEulerConstraint::covariance() co
 void AbsoluteOrientation3DStampedEulerConstraint::print(std::ostream& stream) const
 {
   stream << type() << "\n"
+         << "  source: " << source() << "\n"
          << "  uuid: " << uuid() << "\n"
-         << "  orientation variable: " << variables_.at(0) << "\n"
-         << "  mean: " << mean_.transpose() << "\n"
+         << "  orientation variable: " << variables().at(0) << "\n"
+         << "  mean: " << mean().transpose() << "\n"
          << "  sqrt_info: " << sqrtInformation() << "\n";
-}
-
-fuse_core::Constraint::UniquePtr AbsoluteOrientation3DStampedEulerConstraint::clone() const
-{
-  return AbsoluteOrientation3DStampedEulerConstraint::make_unique(*this);
 }
 
 ceres::CostFunction* AbsoluteOrientation3DStampedEulerConstraint::costFunction() const
@@ -84,3 +85,6 @@ ceres::CostFunction* AbsoluteOrientation3DStampedEulerConstraint::costFunction()
 }
 
 }  // namespace fuse_constraints
+
+BOOST_CLASS_EXPORT_IMPLEMENT(fuse_constraints::AbsoluteOrientation3DStampedEulerConstraint);
+PLUGINLIB_EXPORT_CLASS(fuse_constraints::AbsoluteOrientation3DStampedEulerConstraint, fuse_core::Constraint);

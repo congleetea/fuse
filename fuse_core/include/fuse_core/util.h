@@ -34,10 +34,14 @@
 #ifndef FUSE_CORE_UTIL_H
 #define FUSE_CORE_UTIL_H
 
+#include <ros/console.h>
+#include <ros/node_handle.h>
+
 #include <ceres/jet.h>
 #include <Eigen/Core>
 
 #include <cmath>
+#include <string>
 
 
 namespace fuse_core
@@ -109,7 +113,7 @@ static inline T getYaw(const T w, const T x, const T y, const T z)
  *
  * @param[in/out] angle Input angle to be wrapped to the (-Pi, +Pi] range. Angle is updated by this function.
  */
-template<typename T>
+template <typename T>
 void wrapAngle2D(T& angle)
 {
   // Define some necessary variations of PI with the correct type (double or Jet)
@@ -126,7 +130,7 @@ void wrapAngle2D(T& angle)
  * @param[in] angle Input angle to be wrapped to the (-Pi, +Pi] range.
  * @return The equivalent wrapped angle
  */
-template<typename T>
+template <typename T>
 T wrapAngle2D(const T& angle)
 {
   T wrapped = angle;
@@ -148,6 +152,30 @@ Eigen::Matrix<T, 2, 2, Eigen::RowMajor> rotationMatrix2D(const T angle)
   Eigen::Matrix<T, 2, 2, Eigen::RowMajor> rotation;
   rotation << cos_angle, -sin_angle, sin_angle, cos_angle;
   return rotation;
+}
+
+
+/**
+ * @brief Helper function that loads strictly positive integral or floating point values from the parameter server
+ *
+ * @param[in] node_handle - The node handle used to load the parameter
+ * @param[in] parameter_name - The parameter name to load
+ * @param[in] default_value - A default value to use if the provided parameter name does not exist
+ * @return The loaded (or default) value
+ */
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value || std::is_floating_point<T>::value>::type* = nullptr>
+T getPositiveParam(const ros::NodeHandle& node_handle, const std::string& parameter_name, T default_value)
+{
+  T value;
+  node_handle.param(parameter_name, value, default_value);
+  if (value <= 0)
+  {
+    ROS_WARN_STREAM("The requested " << parameter_name << " is <= 0. Using the default value (" <<
+                    default_value << ") instead.");
+    value = default_value;
+  }
+  return value;
 }
 
 }  // namespace fuse_core

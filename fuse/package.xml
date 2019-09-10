@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>fuse</name>
-  <version>0.3.0</version>
+  <version>0.4.0</version>
   <description>
     The fuse metapackage
   </description>
@@ -14,9 +14,12 @@
   <exec_depend>fuse_constraints</exec_depend>
   <exec_depend>fuse_core</exec_depend>
   <exec_depend>fuse_graphs</exec_depend>
+  <exec_depend>fuse_models</exec_depend>
+  <exec_depend>fuse_msgs</exec_depend>
   <exec_depend>fuse_optimizers</exec_depend>
   <exec_depend>fuse_publishers</exec_depend>
   <exec_depend>fuse_variables</exec_depend>
+  <exec_depend>fuse_viz</exec_depend>
 
   <export>
     <metapackage />

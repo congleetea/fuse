@@ -51,7 +51,7 @@ namespace fuse_core
 using TransactionCallback = std::function<void(Transaction::SharedPtr transaction)>;
 
 /**
- * @brief The interface definiton for sensor model plugins in the fuse ecosystem.
+ * @brief The interface definition for sensor model plugins in the fuse ecosystem.
  *
  * A sensor model plugin is responsible for generating new constraints and passing them along to the optimizer, where
  * the actual sensor fusion takes place. This class defines the basic interface between the sensor model and the
@@ -87,7 +87,7 @@ public:
    *
    * @param[in] graph A read-only pointer to the graph object, allowing queries to be performed whenever needed.
    */
-  virtual void graphCallback(Graph::ConstSharedPtr graph) {}
+  virtual void graphCallback(Graph::ConstSharedPtr /*graph*/) {}
 
    /**
    * @brief Perform any required post-construction initialization, such as subscribing to topics or reading from the
@@ -108,6 +108,29 @@ public:
    * @brief Get the unique name of this sensor
    */
   virtual const std::string& name() const = 0;
+
+  /**
+   * @brief Function to be executed whenever the optimizer is ready to receive transactions
+   *
+   * This method will be called by the optimizer, in the optimizer's thread, once the optimizer has been initialized
+   * and is ready to receive transactions. It may also be called as part of a stop-start cycle when the optimizer
+   * has been requested to reset itself. This allows the sensor model to reset any internal state before the
+   * optimizer begins processing after a reset.
+   *
+   * The sensor model must not send any transactions to the optimizer before start() is called.
+   */
+  virtual void start() {}
+
+  /**
+   * @brief Function to be executed whenever the optimizer is no longer ready to receive transactions
+   *
+   * This method will be called by the optimizer, in the optimizer's thread, before the optimizer shutdowns. It may
+   * also be called as part of a stop-start cycle when the optimizer has been requested to reset itself. This allows
+   * the sensor model to reset any internal state before the optimizer begins processing after a reset.
+   *
+   * The sensor model must not send any transactions to the optimizer after stop() is called.
+   */
+  virtual void stop() {}
 
 protected:
   /**

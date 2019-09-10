@@ -32,6 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 #include <fuse_core/async_publisher.h>
+
 #include <fuse_core/callback_wrapper.h>
 #include <fuse_core/graph.h>
 #include <fuse_core/transaction.h>
@@ -57,7 +58,7 @@ void AsyncPublisher::initialize(const std::string& name)
   // Initialize internal state
   name_ = name;
   node_handle_.setCallbackQueue(&callback_queue_);
-  private_node_handle_ = ros::NodeHandle(ros::NodeHandle("~"), name_);
+  private_node_handle_ = ros::NodeHandle("~/" + name_);
   private_node_handle_.setCallbackQueue(&callback_queue_);
 
   // Call the derived onInit() function to perform implementation-specific initialization
@@ -73,7 +74,23 @@ void AsyncPublisher::notify(Transaction::ConstSharedPtr transaction, Graph::Cons
   // This minimizes the time spent by the optimizer's thread calling this function.
   auto callback = boost::make_shared<CallbackWrapper<void>>(
     std::bind(&AsyncPublisher::notifyCallback, this, std::move(transaction), std::move(graph)));
-  callback_queue_.addCallback(callback);
+  callback_queue_.addCallback(callback, reinterpret_cast<uint64_t>(this));
+}
+
+void AsyncPublisher::start()
+{
+  auto callback = boost::make_shared<CallbackWrapper<void>>(std::bind(&AsyncPublisher::onStart, this));
+  auto result = callback->getFuture();
+  callback_queue_.addCallback(callback, reinterpret_cast<uint64_t>(this));
+  result.wait();
+}
+
+void AsyncPublisher::stop()
+{
+  auto callback = boost::make_shared<CallbackWrapper<void>>(std::bind(&AsyncPublisher::onStop, this));
+  auto result = callback->getFuture();
+  callback_queue_.addCallback(callback, reinterpret_cast<uint64_t>(this));
+  result.wait();
 }
 
 }  // namespace fuse_core

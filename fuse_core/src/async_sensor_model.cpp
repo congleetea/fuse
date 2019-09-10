@@ -32,6 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 #include <fuse_core/async_sensor_model.h>
+
 #include <fuse_core/callback_wrapper.h>
 #include <fuse_core/graph.h>
 #include <fuse_core/transaction.h>
@@ -54,8 +55,9 @@ AsyncSensorModel::AsyncSensorModel(size_t thread_count) :
 
 void AsyncSensorModel::graphCallback(Graph::ConstSharedPtr graph)
 {
-  callback_queue_.addCallback(boost::make_shared<CallbackWrapper<void>>(
-    std::bind(&AsyncSensorModel::onGraphUpdate, this, std::move(graph))));
+  callback_queue_.addCallback(
+    boost::make_shared<CallbackWrapper<void>>(std::bind(&AsyncSensorModel::onGraphUpdate, this, std::move(graph))),
+    reinterpret_cast<uint64_t>(this));
 }
 
 void AsyncSensorModel::initialize(
@@ -65,7 +67,7 @@ void AsyncSensorModel::initialize(
   // Initialize internal state
   name_ = name;
   node_handle_.setCallbackQueue(&callback_queue_);
-  private_node_handle_ = ros::NodeHandle(ros::NodeHandle("~"), name_);
+  private_node_handle_ = ros::NodeHandle("~/" + name_);
   private_node_handle_.setCallbackQueue(&callback_queue_);
   transaction_callback_ = transaction_callback;
 
@@ -79,6 +81,22 @@ void AsyncSensorModel::initialize(
 void AsyncSensorModel::sendTransaction(Transaction::SharedPtr transaction)
 {
   transaction_callback_(std::move(transaction));
+}
+
+void AsyncSensorModel::start()
+{
+  auto callback = boost::make_shared<CallbackWrapper<void>>(std::bind(&AsyncSensorModel::onStart, this));
+  auto result = callback->getFuture();
+  callback_queue_.addCallback(callback, reinterpret_cast<uint64_t>(this));
+  result.wait();
+}
+
+void AsyncSensorModel::stop()
+{
+  auto callback = boost::make_shared<CallbackWrapper<void>>(std::bind(&AsyncSensorModel::onStop, this));
+  auto result = callback->getFuture();
+  callback_queue_.addCallback(callback, reinterpret_cast<uint64_t>(this));
+  result.wait();
 }
 
 }  // namespace fuse_core

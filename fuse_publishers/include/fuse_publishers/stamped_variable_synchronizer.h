@@ -194,7 +194,7 @@ constexpr bool allStampedVariables = all_stamped_variables<Ts...>::value;
 template <typename...>
 struct all_variables_exist
 {
-  static bool value(const fuse_core::Graph& graph, const ros::Time& stamp, const fuse_core::UUID& device_id)
+  static bool value(const fuse_core::Graph& /*graph*/, const ros::Time& /*stamp*/, const fuse_core::UUID& /*device_id*/)
   {
     return true;
   }
@@ -234,7 +234,7 @@ struct all_variables_exist<T, Ts...>
 template <typename...>
 struct is_variable_in_pack
 {
-  static bool value(const fuse_core::Variable& variable)
+  static bool value(const fuse_core::Variable& /*variable*/)
   {
     return false;
   }
@@ -306,8 +306,8 @@ void StampedVariableSynchronizer<Ts...>::updateTime(
     if (detail::is_variable_in_pack<Ts...>::value(candidate_variable))
     {
       const auto& stamped_variable = dynamic_cast<const fuse_variables::Stamped&>(candidate_variable);
-      if ((stamped_variable.deviceId() == device_id_) &&
-          (stamped_variable.stamp() > latest_common_stamp_) &&
+      if ((stamped_variable.stamp() > latest_common_stamp_) &&
+          (stamped_variable.deviceId() == device_id_) &&
           (detail::all_variables_exist<Ts...>::value(graph, stamped_variable.stamp(), device_id_)))
       {
         latest_common_stamp_ = stamped_variable.stamp();

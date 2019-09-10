@@ -34,15 +34,21 @@
 #include <fuse_core/graph.h>
 
 #include <fuse_core/transaction.h>
+#include <fuse_core/uuid.h>
 
 #include <boost/iterator/transform_iterator.hpp>
 
 #include <functional>
-#include <vector>
 
 
 namespace fuse_core
 {
+
+std::ostream& operator <<(std::ostream& stream, const Graph& graph)
+{
+  graph.print(stream);
+  return stream;
+}
 
 Graph::const_variable_range Graph::getConnectedVariables(const UUID& constraint_uuid) const
 {

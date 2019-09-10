@@ -34,15 +34,134 @@
 #ifndef FUSE_CORE_VARIABLE_H
 #define FUSE_CORE_VARIABLE_H
 
-#include <fuse_core/uuid.h>
-#include <fuse_core/macros.h>
 #include <fuse_core/local_parameterization.h>
+#include <fuse_core/macros.h>
+#include <fuse_core/serialization.h>
+#include <fuse_core/uuid.h>
 
-#include <boost/core/demangle.hpp>
+#include <boost/serialization/access.hpp>
+#include <boost/type_index/stl_type_index.hpp>
 
 #include <ostream>
 #include <string>
-#include <typeinfo>
+
+
+/**
+ * @brief Implementation of the clone() member function for derived classes
+ *
+ * Usage:
+ * @code{.cpp}
+ * class Derived : public Variable
+ * {
+ * public:
+ *   FUSE_VARIABLE_CLONE_DEFINITION(Derived);
+ *   // The rest of the derived variable implementation
+ * }
+ * @endcode
+ */
+#define FUSE_VARIABLE_CLONE_DEFINITION(...) \
+  fuse_core::Variable::UniquePtr clone() const override \
+  { \
+    return __VA_ARGS__::make_unique(*this); \
+  }
+
+/**
+ * @brief Implementation of the serialize() and deserialize() member functions for derived classes
+ *
+ * Usage:
+ * @code{.cpp}
+ * class Derived : public Variable
+ * {
+ * public:
+ *   FUSE_VARIABLE_SERIALIZE_DEFINITION(Derived);
+ *   // The rest of the derived variable implementation
+ * }
+ * @endcode
+ */
+#define FUSE_VARIABLE_SERIALIZE_DEFINITION(...) \
+  void serialize(fuse_core::BinaryOutputArchive& archive) const override \
+  { \
+    archive << *this; \
+  }  /* NOLINT */ \
+  void serialize(fuse_core::TextOutputArchive& archive) const override \
+  { \
+    archive << *this; \
+  }  /* NOLINT */ \
+  void deserialize(fuse_core::BinaryInputArchive& archive) override \
+  { \
+    archive >> *this; \
+  }  /* NOLINT */ \
+  void deserialize(fuse_core::TextInputArchive& archive) override \
+  { \
+    archive >> *this; \
+  }
+
+/**
+ * @brief Implements the type() member function using the suggested implementation
+ *
+ * Also creates a static detail::type() function that may be used without an object instance
+ *
+ * Usage:
+ * @code{.cpp}
+ * class Derived : public Variable
+ * {
+ * public:
+ *   FUSE_VARIABLE_TYPE_DEFINITION(Derived);
+ *   // The rest of the derived variable implementation
+ * }
+ * @endcode
+ */
+#define FUSE_VARIABLE_TYPE_DEFINITION(...) \
+  struct detail \
+  { \
+    static std::string type() \
+    { \
+      return boost::typeindex::stl_type_index::type_id<__VA_ARGS__>().pretty_name(); \
+    }  /* NOLINT */ \
+  };  /* NOLINT */ \
+  std::string type() const override \
+  { \
+    return detail::type(); \
+  }
+
+/**
+ * @brief Convenience function that creates the required pointer aliases, clone() method, and type() method
+ *
+ * Usage:
+ * @code{.cpp}
+ * class Derived : public Variable
+ * {
+ * public:
+ *   FUSE_VARIABLE_DEFINITIONS(Derived);
+ *   // The rest of the derived variable implementation
+ * }
+ * @endcode
+ */
+#define FUSE_VARIABLE_DEFINITIONS(...) \
+  SMART_PTR_DEFINITIONS(__VA_ARGS__) \
+  FUSE_VARIABLE_TYPE_DEFINITION(__VA_ARGS__) \
+  FUSE_VARIABLE_CLONE_DEFINITION(__VA_ARGS__) \
+  FUSE_VARIABLE_SERIALIZE_DEFINITION(__VA_ARGS__)
+
+/**
+ * @brief Convenience function that creates the required pointer aliases, clone() method, and type() method
+ *        for derived Variable classes that have fixed-sized Eigen member objects.
+ *
+ * Usage:
+ * @code{.cpp}
+ * class Derived : public Variable
+ * {
+ * public:
+ *   FUSE_VARIABLE_DEFINITIONS_WTIH_EIGEN(Derived);
+ *   // The rest of the derived variable implementation
+ * }
+ * @endcode
+ */
+#define FUSE_VARIABLE_DEFINITIONS_WITH_EIGEN(...) \
+  SMART_PTR_DEFINITIONS_WITH_EIGEN(__VA_ARGS__) \
+  FUSE_VARIABLE_TYPE_DEFINITION(__VA_ARGS__) \
+  FUSE_VARIABLE_CLONE_DEFINITION(__VA_ARGS__) \
+  FUSE_VARIABLE_SERIALIZE_DEFINITION(__VA_ARGS__)
 
 
 namespace fuse_core
@@ -71,25 +190,12 @@ public:
   SMART_PTR_ALIASES_ONLY(Variable);
 
   /**
-   * @brief Constructor
+   * @brief Default constructor
    */
   Variable() = default;
 
   /**
-   * @brief Destructor
-   */
-  virtual ~Variable() = default;
-
-  /**
-   * @brief Returns a unique name for this variable type.
-   *
-   * The variable type string must be unique for each class. As such, the fully-qualified class name is an excellent
-   * choice for the type string.
-   */
-  virtual std::string type() const { return boost::core::demangle(typeid(*this).name()); }
-
-  /**
-   * @brief Returns a UUID for this variable.
+   * @brief Constructor
    *
    * The implemented UUID generation should be deterministic such that a variable with the same metadata will always
    * return the same UUID. Identical UUIDs produced by sensors will be treated as the same variable by the optimizer,
@@ -101,8 +207,36 @@ public:
    * The type() string can be used to generate a UUID namespace for all variables of a given derived type, and the
    * variable metadata of consequence can be converted into a carefully-formatted string or byte array and provided to
    * the generator to create the UUID for a specific variable instance.
+   *
+   * @param[in] uuid The unique ID number for this variable
    */
-  virtual UUID uuid() const = 0;
+  explicit Variable(const UUID& uuid);
+
+  /**
+   * @brief Destructor
+   */
+  virtual ~Variable() = default;
+
+  /**
+   * @brief Returns a UUID for this variable.
+   */
+  const UUID& uuid() const { return uuid_; }
+
+  /**
+   * @brief Returns a unique name for this variable type.
+   *
+   * The variable type string must be unique for each class. As such, the fully-qualified class name is an excellent
+   * choice for the type string.
+   *
+   * The suggested implementation for all derived classes is:
+   * @code{.cpp}
+   * return return boost::typeindex::stl_type_index::type_id<Derived>().pretty_name();
+   * @endcode
+   *
+   * To make this easy to implement in all derived classes, the FUSE_VARIABLE_TYPE_DEFINITION() and
+   * FUSE_VARIABLE_DEFINITIONS() macro functions have been provided.
+   */
+  virtual std::string type() const = 0;
 
   /**
    * @brief Returns the number of elements of this variable.
@@ -156,6 +290,9 @@ public:
    * return Derived::make_unique(*this);
    * @endcode
    *
+   * To make this easy to implement in all derived classes, the FUSE_VARIABLE_CLONE_DEFINITION() and
+   * FUSE_VARIABLE_DEFINITIONS() macros functions have been provided.
+   *
    * @return A unique pointer to a new instance of the most-derived Variable
    */
   virtual Variable::UniquePtr clone() const = 0;
@@ -177,6 +314,76 @@ public:
   virtual fuse_core::LocalParameterization* localParameterization() const
   {
     return nullptr;
+  }
+
+  /**
+   * @brief Serialize this Variable into the provided binary archive
+   *
+   * This can/should be implemented as follows in all derived classes:
+   * @code{.cpp}
+   * archive << *this;
+   * @endcode
+   *
+   * @param[out] archive - The archive to serialize this variable into
+   */
+  virtual void serialize(fuse_core::BinaryOutputArchive& /* archive */) const = 0;
+
+  /**
+   * @brief Serialize this Variable into the provided text archive
+   *
+   * This can/should be implemented as follows in all derived classes:
+   * @code{.cpp}
+   * archive << *this;
+   * @endcode
+   *
+   * @param[out] archive - The archive to serialize this variable into
+   */
+  virtual void serialize(fuse_core::TextOutputArchive& /* archive */) const = 0;
+
+  /**
+   * @brief Deserialize data from the provided binary archive into this Variable
+   *
+   * This can/should be implemented as follows in all derived classes:
+   * @code{.cpp}
+   * archive >> *this;
+   * @endcode
+   *
+   * @param[in] archive - The archive holding serialized Variable data
+   */
+  virtual void deserialize(fuse_core::BinaryInputArchive& /* archive */) = 0;
+
+  /**
+   * @brief Deserialize data from the provided text archive into this Variable
+   *
+   * This can/should be implemented as follows in all derived classes:
+   * @code{.cpp}
+   * archive >> *this;
+   * @endcode
+   *
+   * @param[in] archive - The archive holding serialized Variable data
+   */
+  virtual void deserialize(fuse_core::TextInputArchive& /* archive */) = 0;
+
+private:
+  fuse_core::UUID uuid_;  //!< The unique ID number for this variable
+
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
+
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * This method, or a combination of save() and load() methods, must be implemented by all derived classes. See
+   * documentation on Boost Serialization for information on how to implement the serialize() method.
+   * https://www.boost.org/doc/libs/1_70_0/libs/serialization/doc/
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & uuid_;
   }
 };
 

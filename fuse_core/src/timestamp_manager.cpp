@@ -31,8 +31,9 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-#include <fuse_core/constraint.h>
 #include <fuse_core/timestamp_manager.h>
+
+#include <fuse_core/constraint.h>
 #include <fuse_core/transaction.h>
 #include <fuse_core/variable.h>
 #include <ros/duration.h>
@@ -40,6 +41,8 @@
 
 #include <boost/iterator/transform_iterator.hpp>
 
+#include <algorithm>
+#include <iterator>
 #include <set>
 #include <stdexcept>
 #include <utility>
@@ -76,18 +79,9 @@ void TimestampManager::query(
   // Create a list of all the required timestamps involved in motion model segments that must be created
   // Add all of the existing timestamps between the first and last input stamp
   Transaction motion_model_transaction;
-  auto first_stamp = stamps.front();
-  // stamps is a forward-only range. Getting the last element takes a bit of work.
-  ros::Time last_stamp;
-  {
-    auto iter = stamps.begin();
-    while (std::next(iter) != stamps.end())
-    {
-      ++iter;
-    }
-    last_stamp = *iter;
-  }
   std::set<ros::Time> augmented_stamps(stamps.begin(), stamps.end());
+  auto first_stamp = *augmented_stamps.begin();
+  auto last_stamp = *augmented_stamps.rbegin();
   {
     auto begin = motion_model_history_.upper_bound(first_stamp);
     if (begin != motion_model_history_.begin())
@@ -119,6 +113,25 @@ void TimestampManager::query(
           (history_iter->second.beginning_stamp == previous_stamp) &&
           (history_iter->second.ending_stamp == current_stamp))
       {
+        if (update_variables)
+        {
+          // Add the motion model version of the variables involved in this motion model segment
+          // This ensures that the variables in the final transaction will be overwritten with the motion model version
+          auto transaction_variables = transaction.addedVariables();
+          for (const auto& variable : history_iter->second.variables)
+          {
+            if (std::any_of(
+                  transaction_variables.begin(),
+                  transaction_variables.end(),
+                  [variable_uuid = variable->uuid()](const auto& input_variable)
+                  {
+                    return input_variable.uuid() == variable_uuid;
+                  }))  // NOLINT
+            {
+              motion_model_transaction.addVariable(variable, update_variables);
+            }
+          }
+        }
         continue;
       }
       // Check if this stamp is in the middle of an existing entry. If so, delete it.

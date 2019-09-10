@@ -109,7 +109,7 @@ public:
   /**
    * @brief Destructor
    */
-  virtual ~Optimizer() = default;
+  virtual ~Optimizer();
 
 protected:
   // The unique ptrs returned by pluginlib have a custom deleter. This makes specifying the type rather annoying
@@ -127,10 +127,12 @@ protected:
 
   AssociatedMotionModels associated_motion_models_;  //!< Tracks what motion models should be used for each sensor
   fuse_core::Graph::UniquePtr graph_;  //!< The graph object that holds all variables and constraints
-  pluginlib::ClassLoader<fuse_core::MotionModel> motion_model_loader_;  //!< Pluginlib class loader for MotionModels
-  MotionModels motion_models_;  //!< The set of motion models, addressable by name
+
+  // Ordering ROS objects with callbacks last
   ros::NodeHandle node_handle_;  //!< Node handle in the public namespace for subscribing and advertising
   ros::NodeHandle private_node_handle_;  //!< Node handle in the private namespace for reading configuration settings
+  pluginlib::ClassLoader<fuse_core::MotionModel> motion_model_loader_;  //!< Pluginlib class loader for MotionModels
+  MotionModels motion_models_;  //!< The set of motion models, addressable by name
   pluginlib::ClassLoader<fuse_core::Publisher> publisher_loader_;  //!< Pluginlib class loader for Publishers
   Publishers publishers_;  //!< The set of publishers to execute after every graph optimization
   pluginlib::ClassLoader<fuse_core::SensorModel> sensor_model_loader_;  //!< Pluginlib class loader for SensorModels
@@ -206,6 +208,21 @@ protected:
   void injectCallback(
     const std::string& sensor_name,
     fuse_core::Transaction::SharedPtr transaction);
+
+  /**
+   * @brief Clear all of the callbacks inserted into the callback queue by the injectCallback() method
+   */
+  void clearCallbacks();
+
+  /**
+   * @brief Start all configured plugins (motion models, publishers, and sensor models)
+   */
+  void startPlugins();
+
+  /**
+   * @brief Stop all configured plugins (motion models, publishers, and sensor models)
+   */
+  void stopPlugins();
 };
 
 }  // namespace fuse_optimizers

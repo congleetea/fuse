@@ -45,6 +45,7 @@
 #include <algorithm>
 #include <iterator>
 #include <numeric>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -149,13 +150,19 @@ UuidOrdering computeEliminationOrder(
 }
 
 fuse_core::Transaction marginalizeVariables(
+  const std::string& source,
   const std::vector<fuse_core::UUID>& marginalized_variables,
   const fuse_core::Graph& graph)
 {
-  return marginalizeVariables(marginalized_variables, graph, computeEliminationOrder(marginalized_variables, graph));
+  return marginalizeVariables(
+    source,
+    marginalized_variables,
+    graph,
+    computeEliminationOrder(marginalized_variables, graph));
 }
 
 fuse_core::Transaction marginalizeVariables(
+  const std::string& source,
   const std::vector<fuse_core::UUID>& marginalized_variables,
   const fuse_core::Graph& graph,
   const fuse_constraints::UuidOrdering& elimination_order)
@@ -224,7 +231,7 @@ fuse_core::Transaction marginalizeVariables(
   {
     for (const auto& linear_term : linear_terms[i])
     {
-      auto marginal_constraint = detail::createMarginalConstraint(linear_term, graph, variable_order);
+      auto marginal_constraint = detail::createMarginalConstraint(source, linear_term, graph, variable_order);
       transaction.addConstraint(std::move(marginal_constraint));
     }
   }
@@ -405,20 +412,30 @@ LinearTerm marginalizeNext(const std::vector<LinearTerm>& linear_terms)
   }
 
   // Construct the Ab matrix
-  auto Ab = fuse_core::MatrixXd(row_offsets.back(), column_offsets.back() + 1u);
-  Ab.setZero();
+  fuse_core::MatrixXd Ab = fuse_core::MatrixXd::Zero(row_offsets.back(), column_offsets.back() + 1u);
   for (size_t term_index = 0ul; term_index < linear_terms.size(); ++term_index)
   {
     const auto& linear_term = linear_terms[term_index];
     auto row_offset = row_offsets[term_index];
-    for (size_t variable_index = 0ul; variable_index < linear_term.variables.size(); ++variable_index)
+    for (size_t i = 0ul; i < linear_term.variables.size(); ++i)
     {
-      auto column_offset = column_offsets[variable_index];
-      const auto& A = linear_term.A[variable_index];
-      Ab.block(row_offset, column_offset, A.rows(), A.cols()) = A;
+      const auto& A = linear_term.A[i];
+      auto dense = index_to_dense[linear_term.variables[i]];
+      auto column_offset = column_offsets[dense];
+      for (int row = 0; row < A.rows(); ++row)
+      {
+        for (int col = 0; col < A.cols(); ++col)
+        {
+          Ab(row_offset + row, column_offset + col) = A(row, col);
+        }
+      }
     }
     const auto& b = linear_term.b;
-    Ab.block(row_offset, column_offsets.back(), b.rows(), b.cols()) = b;
+    int column_offset = column_offsets.back();
+    for (int row = 0; row < b.rows(); ++row)
+    {
+      Ab(row_offset + row, column_offset) = b(row);
+    }
   }
 
   // Compute the QR decomposition
@@ -448,18 +465,36 @@ LinearTerm marginalizeNext(const std::vector<LinearTerm>& linear_terms)
   auto marginal_term = LinearTerm();
   if (marginal_rows > 0)
   {
+    auto variable_count = dense_to_index.size() - 1;
+    marginal_term.variables.reserve(variable_count);
+    marginal_term.A.reserve(variable_count);
     for (size_t dense = 1ul; dense < dense_to_index.size(); ++dense)  // Skipping the marginalized variable
     {
       auto index = dense_to_index[dense];
       marginal_term.variables.push_back(index);
-      marginal_term.A.push_back(Ab.block(min_row, column_offsets[dense], marginal_rows, index_to_cols[index]));
+      fuse_core::MatrixXd A = fuse_core::MatrixXd::Zero(marginal_rows, index_to_cols[index]);
+      auto column_offset = column_offsets[dense];
+      for (int row = 0; row < A.rows(); ++row)
+      {
+        for (int col = 0; col < A.cols(); ++col)
+        {
+          A(row, col) = Ab(min_row + row, column_offset + col);
+        }
+      }
+      marginal_term.A.push_back(std::move(A));
     }
-    marginal_term.b = Ab.block(min_row, column_offsets.back(), marginal_rows, 1);
+    marginal_term.b = fuse_core::VectorXd::Zero(marginal_rows);
+    auto column_offset = column_offsets.back();
+    for (int row = 0; row < marginal_term.b.rows(); ++row)
+    {
+      marginal_term.b(row) = Ab(min_row + row, column_offset);
+    }
   }
   return marginal_term;
 }
 
 MarginalConstraint::SharedPtr createMarginalConstraint(
+  const std::string& source,
   const LinearTerm& linear_term,
   const fuse_core::Graph& graph,
   const UuidOrdering& elimination_order)
@@ -470,6 +505,7 @@ MarginalConstraint::SharedPtr createMarginalConstraint(
   };
 
   return MarginalConstraint::make_shared(
+    source,
     boost::make_transform_iterator(linear_term.variables.begin(), index_to_variable),
     boost::make_transform_iterator(linear_term.variables.end(), index_to_variable),
     linear_term.A.begin(),

@@ -32,11 +32,16 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 #include <fuse_core/transaction.h>
+
+#include <fuse_core/constraint.h>
 #include <fuse_core/uuid.h>
+#include <fuse_core/variable.h>
+#include <ros/time.h>
 
 #include <boost/iterator/transform_iterator.hpp>
 
 #include <algorithm>
+#include <ostream>
 
 
 namespace fuse_core
@@ -177,6 +182,7 @@ void Transaction::removeVariable(const UUID& variable_uuid)
 
 void Transaction::merge(const Transaction& other, bool overwrite)
 {
+  stamp_ = std::max(stamp_, other.stamp_);
   involved_stamps_.insert(other.involved_stamps_.begin(), other.involved_stamps_.end());
   for (const auto& added_constraint : other.added_constraints_)
   {
@@ -228,6 +234,26 @@ void Transaction::print(std::ostream& stream) const
 Transaction::UniquePtr Transaction::clone() const
 {
   return Transaction::make_unique(*this);
+}
+
+void Transaction::serialize(fuse_core::BinaryOutputArchive& archive) const
+{
+  archive << *this;
+}
+
+void Transaction::serialize(fuse_core::TextOutputArchive& archive) const
+{
+  archive << *this;
+}
+
+void Transaction::deserialize(fuse_core::BinaryInputArchive& archive)
+{
+  archive >> *this;
+}
+
+void Transaction::deserialize(fuse_core::TextInputArchive& archive)
+{
+  archive >> *this;
 }
 
 std::ostream& operator <<(std::ostream& stream, const Transaction& transaction)

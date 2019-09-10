@@ -37,15 +37,20 @@
 #include <fuse_core/constraint.h>
 #include <fuse_core/eigen.h>
 #include <fuse_core/macros.h>
+#include <fuse_core/serialization.h>
 #include <fuse_core/uuid.h>
 #include <fuse_variables/orientation_3d_stamped.h>
 #include <geometry_msgs/PoseWithCovariance.h>
 #include <geometry_msgs/Quaternion.h>
 
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/serialization/export.hpp>
 #include <Eigen/Geometry>
 
 #include <array>
 #include <ostream>
+#include <string>
 
 
 namespace fuse_constraints
@@ -59,17 +64,24 @@ namespace fuse_constraints
 class RelativeOrientation3DStampedConstraint : public fuse_core::Constraint
 {
 public:
-  SMART_PTR_DEFINITIONS(RelativeOrientation3DStampedConstraint);
+  FUSE_CONSTRAINT_DEFINITIONS_WITH_EIGEN(RelativeOrientation3DStampedConstraint);
+
+  /**
+   * @brief Default constructor
+   */
+  RelativeOrientation3DStampedConstraint() = default;
 
   /**
    * @brief Create a constraint using a measurement/prior of a 3D orientation
    *
+   * @param[in] source       The name of the sensor or motion model that generated this constraint
    * @param[in] orientation1 The variable representing the first orientation
    * @param[in] orientation2 The variable representing the second orientation
    * @param[in] delta        The measured orientation change as a quaternion (4x1 vector: w, x, y, z)
    * @param[in] covariance   The measurement covariance (3x3 matrix: qx, qy, qz)
    */
   RelativeOrientation3DStampedConstraint(
+    const std::string& source,
     const fuse_variables::Orientation3DStamped& orientation1,
     const fuse_variables::Orientation3DStamped& orientation2,
     const fuse_core::Vector4d& delta,
@@ -78,12 +90,14 @@ public:
   /**
    * @brief Create a constraint using a measurement/prior of a 3D orientation
    *
+   * @param[in] source       The name of the sensor or motion model that generated this constraint
    * @param[in] orientation1 The variable representing the first orientation
    * @param[in] orientation2 The variable representing the second orientation
    * @param[in] delta        The measured orientation change as an Eigen quaternion
    * @param[in] covariance   The measurement covariance (3x3 matrix: qx, qy, qz)
    */
   RelativeOrientation3DStampedConstraint(
+    const std::string& source,
     const fuse_variables::Orientation3DStamped& orientation1,
     const fuse_variables::Orientation3DStamped& orientation2,
     const Eigen::Quaterniond& delta,
@@ -92,12 +106,14 @@ public:
   /**
    * @brief Create a constraint using a measurement/prior of a 3D orientation
    *
+   * @param[in] source       The name of the sensor or motion model that generated this constraint
    * @param[in] orientation1 The variable representing the first orientation
    * @param[in] orientation2 The variable representing the second orientation
    * @param[in] delta        The measured orientation change as a ROS quaternion message
    * @param[in] covariance   The measurement covariance (3x3 matrix: qx, qy, qz)
    */
   RelativeOrientation3DStampedConstraint(
+    const std::string& source,
     const fuse_variables::Orientation3DStamped& orientation1,
     const fuse_variables::Orientation3DStamped& orientation2,
     const geometry_msgs::Quaternion& delta,
@@ -137,15 +153,6 @@ public:
   void print(std::ostream& stream = std::cout) const override;
 
   /**
-   * @brief Perform a deep copy of the constraint and return a unique pointer to the copy
-   *
-   * Unique pointers can be implicitly upgraded to shared pointers if needed.
-   *
-   * @return A unique pointer to a new instance of the most-derived constraint
-   */
-  fuse_core::Constraint::UniquePtr clone() const override;
-
-  /**
    * @brief Construct an instance of this constraint's cost function
    *
    * The function caller will own the new cost function instance. It is the responsibility of the caller to delete
@@ -183,8 +190,28 @@ protected:
 
   fuse_core::Vector4d delta_;  //!< The measured/prior mean vector for this variable
   fuse_core::Matrix3d sqrt_information_;  //!< The square root information matrix
+
+private:
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
+
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & boost::serialization::base_object<fuse_core::Constraint>(*this);
+    archive & delta_;
+    archive & sqrt_information_;
+  }
 };
 
 }  // namespace fuse_constraints
+
+BOOST_CLASS_EXPORT_KEY(fuse_constraints::RelativeOrientation3DStampedConstraint);
 
 #endif  // FUSE_CONSTRAINTS_RELATIVE_ORIENTATION_3D_STAMPED_CONSTRAINT_H

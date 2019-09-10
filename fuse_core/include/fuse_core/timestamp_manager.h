@@ -45,7 +45,6 @@
 
 #include <functional>
 #include <map>
-#include <set>
 #include <vector>
 
 
@@ -162,6 +161,14 @@ public:
   void bufferLength(const ros::Duration& buffer_length)
   {
     buffer_length_ = buffer_length;
+  }
+
+  /**
+   * @brief Clear all timestamps from the motion model history
+   */
+  void clear()
+  {
+    motion_model_history_.clear();
   }
 
   /**

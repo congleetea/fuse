@@ -31,16 +31,25 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-#include <fuse_core/uuid.h>
 #include <fuse_variables/velocity_angular_3d_stamped.h>
+
+#include <fuse_core/uuid.h>
+#include <fuse_variables/fixed_size_variable.h>
+#include <fuse_variables/stamped.h>
+#include <pluginlib/class_list_macros.h>
+#include <ros/time.h>
+
+#include <boost/serialization/export.hpp>
+
+#include <ostream>
 
 
 namespace fuse_variables
 {
 
 VelocityAngular3DStamped::VelocityAngular3DStamped(const ros::Time& stamp, const fuse_core::UUID& device_id) :
-  Stamped(stamp, device_id),
-  uuid_(fuse_core::uuid::generate(type(), stamp, device_id))
+  FixedSizeVariable(fuse_core::uuid::generate(detail::type(), stamp, device_id)),
+  Stamped(stamp, device_id)
 {
 }
 
@@ -57,9 +66,7 @@ void VelocityAngular3DStamped::print(std::ostream& stream) const
          << "  - yaw: " << yaw() << "\n";
 }
 
-fuse_core::Variable::UniquePtr VelocityAngular3DStamped::clone() const
-{
-  return VelocityAngular3DStamped::make_unique(*this);
-}
-
 }  // namespace fuse_variables
+
+BOOST_CLASS_EXPORT_IMPLEMENT(fuse_variables::VelocityAngular3DStamped);
+PLUGINLIB_EXPORT_CLASS(fuse_variables::VelocityAngular3DStamped, fuse_core::Variable);

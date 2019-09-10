@@ -61,9 +61,28 @@ public:
   virtual ~MotionModel() = default;
 
   /**
-   * @brief Get the unique name of this motion model
+   * @brief Augment a transaction object such that all involved timestamps are connected by motion model constraints.
+   *
+   * This function will be called by the optimizer (in the Optimizer's thread) for each received transaction.
+   *
+   * @param[in,out] transaction The transaction object that should be augmented with motion model constraints
+   * @return                    True if the motion models were generated successfully, false otherwise
    */
-  virtual const std::string& name() const  = 0;
+  virtual bool apply(Transaction& transaction) = 0;
+
+  /**
+   * @brief Function to be executed whenever the optimizer has completed a Graph update
+   *
+   * This method will be called by the optimizer, in the optimizer's thread, after each Graph update is complete. This
+   * generally means that new variables have been inserted into the Graph, and new optimized values are available.
+   * To simplify synchronization between the motion models and other consumers of Graph data, the provided Graph
+   * object will never be updated by anyone. Thus, only read access to the Graph is provided. Information may be
+   * accessed or computed, but it cannot be changed. The optimizer provides the motion models with Graph updates by
+   * sending a new Graph object, not by modifying this Graph object.
+   *
+   * @param[in] graph A read-only pointer to the graph object, allowing queries to be performed whenever needed.
+   */
+  virtual void graphCallback(Graph::ConstSharedPtr /*graph*/) {}
 
   /**
    * @brief Perform any required post-construction initialization, such as subscribing to topics or reading from the
@@ -78,28 +97,29 @@ public:
   virtual void initialize(const std::string& name) = 0;
 
   /**
-   * @brief Function to be executed whenever the optimizer has completed a Graph update
-   *
-   * This method will be called by the optimizer, in the optimizer's thread, after each Graph update is complete. This
-   * generally means that new variables have been inserted into the Graph, and new optimized values are available.
-   * To simplify synchronization between the motion models and other consumers of Graph data, the provided Graph
-   * object will never be updated by anyone. Thus, only read access to the Graph is provided. Information may be
-   * accessed or computed, but it cannot be changed. The optimizer provides the motion models with Graph updates by
-   * sending a new Graph object, not by modifying this Graph object.
-   *
-   * @param[in] graph A read-only pointer to the graph object, allowing queries to be performed whenever needed.
+   * @brief Get the unique name of this motion model
    */
-  virtual void graphCallback(Graph::ConstSharedPtr graph) {}
+  virtual const std::string& name() const  = 0;
 
   /**
-   * @brief Augment a transaction object such that all involved timestamps are connected by motion model constraints.
+   * @brief Function to be executed whenever the optimizer is ready to receive transactions
    *
-   * This function will be called by the optimizer (in the Optimizer's thread) for each received transaction.
-   *
-   * @param[in,out] transaction The transaction object that should be augmented with motion model constraints
-   * @return                    True if the motion models were generated successfully, false otherwise
+   * This method will be called by the optimizer, in the optimizer's thread, once the optimizer has been initialized
+   * and is ready to receive transactions. It may also be called as part of a stop-start cycle when the optimizer
+   * has been requested to reset itself. This allows the motion model to reset any internal state before the
+   * optimizer begins processing after a reset. No calls to apply() will happen before the optimizer calls start().
    */
-  virtual bool apply(Transaction& transaction) = 0;
+  virtual void start() {}
+
+  /**
+   * @brief Function to be executed whenever the optimizer is no longer ready to receive transactions
+   *
+   * This method will be called by the optimizer, in the optimizer's thread, before the optimizer shutdowns. It may
+   * also be called as part of a stop-start cycle when the optimizer has been requested to reset itself. This allows
+   * the motion model to reset any internal state before the optimizer begins processing after a reset. No calls
+   * to apply() will happen until start() has been called again.
+   */
+  virtual void stop() {}
 
 protected:
   /**

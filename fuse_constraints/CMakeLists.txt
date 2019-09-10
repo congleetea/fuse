@@ -3,8 +3,10 @@ project(fuse_constraints)
 
 set(build_depends
   fuse_core
+  fuse_graphs
   fuse_variables
   geometry_msgs
+  pluginlib
   roscpp
 )
 
@@ -38,6 +40,7 @@ add_compile_options(-std=c++14 -Wall -Werror)
 
 # fuse_constraints library
 add_library(${PROJECT_NAME}
+  src/absolute_constraint.cpp
   src/absolute_orientation_3d_stamped_constraint.cpp
   src/absolute_orientation_3d_stamped_euler_constraint.cpp
   src/absolute_pose_2d_stamped_constraint.cpp
@@ -48,6 +51,7 @@ add_library(${PROJECT_NAME}
   src/normal_delta.cpp
   src/normal_delta_orientation_2d.cpp
   src/normal_prior_orientation_2d.cpp
+  src/relative_constraint.cpp
   src/relative_orientation_3d_stamped_constraint.cpp
   src/relative_pose_2d_stamped_constraint.cpp
   src/relative_pose_3d_stamped_constraint.cpp
@@ -87,6 +91,11 @@ install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
+install(
+  FILES fuse_plugins.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
 #############
 ## Testing ##
 #############
@@ -94,7 +103,6 @@ install(DIRECTORY include/${PROJECT_NAME}/
 if(CATKIN_ENABLE_TESTING)
   find_package(roslint REQUIRED)
   find_package(rostest REQUIRED)
-  find_package(fuse_graphs REQUIRED)
 
   # Lint tests
   set(ROSLINT_CPP_OPTS "--filter=-build/c++11,-runtime/references")
@@ -227,13 +235,12 @@ if(CATKIN_ENABLE_TESTING)
   target_include_directories(test_marginalize_variables
     PRIVATE
       include
+      ${catkin_INCLUDE_DIRS}
       ${CERES_INCLUDE_DIRS}
-      ${fuse_graphs_INCLUDE_DIRS}
   )
   target_link_libraries(test_marginalize_variables
     ${PROJECT_NAME}
     ${catkin_LIBRARIES}
-    ${fuse_graphs_LIBRARIES}
   )
 
   # Relative Constraint Tests

@@ -38,15 +38,23 @@
 #include <fuse_core/eigen.h>
 #include <fuse_core/local_parameterization.h>
 #include <fuse_core/macros.h>
+#include <fuse_core/serialization.h>
 #include <fuse_core/variable.h>
 
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/iterator/zip_iterator.hpp>
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/serialization/export.hpp>
+#include <boost/serialization/shared_ptr.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/tuple/tuple.hpp>
 #include <ceres/cost_function.h>
 
 #include <algorithm>
 #include <cassert>
 #include <ostream>
+#include <string>
 #include <vector>
 
 
@@ -64,7 +72,12 @@ namespace fuse_constraints
 class MarginalConstraint : public fuse_core::Constraint
 {
 public:
-  SMART_PTR_DEFINITIONS(MarginalConstraint);
+  FUSE_CONSTRAINT_DEFINITIONS(MarginalConstraint);
+
+  /**
+   * @brief Default constructor
+   */
+  MarginalConstraint() = default;
 
   /**
    * @brief Create a linear/marginal constraint
@@ -73,6 +86,7 @@ public:
    * have the same number of rows, and the number of columns of each A matrix must match the \p localSize() of its
    * associated variable.
    *
+   * @param[in] source         The name of the sensor or motion model that generated this constraint
    * @param[in] first_variable Iterator pointing to the first involved variable for this constraint
    * @param[in] last_variable  Iterator pointing to one past the last involved variable for this constraint
    * @param[in] first_A        Iterator pointing to the first A matrix, associated with the first variable
@@ -81,6 +95,7 @@ public:
    */
   template<typename VariableIterator, typename MatrixIterator>
   MarginalConstraint(
+    const std::string& source,
     VariableIterator first_variable,
     VariableIterator last_variable,
     MatrixIterator first_A,
@@ -123,15 +138,6 @@ public:
   void print(std::ostream& stream = std::cout) const override;
 
   /**
-   * @brief Perform a deep copy of the constraint and return a unique pointer to the copy
-   *
-   * Unique pointers can be implicitly upgraded to shared pointers if needed.
-   *
-   * @return A unique pointer to a new instance of the most-derived constraint
-   */
-  fuse_core::Constraint::UniquePtr clone() const override;
-
-  /**
    * @brief Construct an instance of this constraint's cost function
    *
    * The function caller will own the new cost function instance. It is the responsibility of the caller to delete
@@ -147,6 +153,26 @@ protected:
   fuse_core::VectorXd b_;  //!< The b vector of the marginal constraint
   std::vector<fuse_core::LocalParameterization::SharedPtr> local_parameterizations_;  //!< The local parameterizations
   std::vector<fuse_core::VectorXd> x_bar_;  //!< The linearization point of each involved variable
+
+private:
+  // Allow Boost Serialization access to private methods
+  friend class boost::serialization::access;
+
+  /**
+   * @brief The Boost Serialize method that serializes all of the data members in to/out of the archive
+   *
+   * @param[in/out] archive - The archive object that holds the serialized class members
+   * @param[in] version - The version of the archive being read/written. Generally unused.
+   */
+  template<class Archive>
+  void serialize(Archive& archive, const unsigned int /* version */)
+  {
+    archive & boost::serialization::base_object<fuse_core::Constraint>(*this);
+    archive & A_;
+    archive & b_;
+    archive & local_parameterizations_;
+    archive & x_bar_;
+  }
 };
 
 namespace detail
@@ -180,19 +206,23 @@ inline fuse_core::LocalParameterization::SharedPtr const getLocalParameterizatio
 
 template<typename VariableIterator, typename MatrixIterator>
 MarginalConstraint::MarginalConstraint(
+  const std::string& source,
   VariableIterator first_variable,
   VariableIterator last_variable,
   MatrixIterator first_A,
   MatrixIterator last_A,
   const fuse_core::VectorXd& b) :
-    Constraint(boost::make_transform_iterator(first_variable, &detail::getUuid),
-               boost::make_transform_iterator(last_variable, &detail::getUuid)),
+    Constraint(source,
+               boost::make_transform_iterator(first_variable, &fuse_constraints::detail::getUuid),
+               boost::make_transform_iterator(last_variable, &fuse_constraints::detail::getUuid)),
     A_(first_A, last_A),
     b_(b),
-    local_parameterizations_(boost::make_transform_iterator(first_variable, &detail::getLocalParameterization),
-                             boost::make_transform_iterator(last_variable, &detail::getLocalParameterization)),
-    x_bar_(boost::make_transform_iterator(first_variable, &detail::getCurrentValue),
-           boost::make_transform_iterator(last_variable, &detail::getCurrentValue))
+    local_parameterizations_(boost::make_transform_iterator(first_variable,
+                                                            &fuse_constraints::detail::getLocalParameterization),
+                             boost::make_transform_iterator(last_variable,
+                                                            &fuse_constraints::detail::getLocalParameterization)),
+    x_bar_(boost::make_transform_iterator(first_variable, &fuse_constraints::detail::getCurrentValue),
+           boost::make_transform_iterator(last_variable, &fuse_constraints::detail::getCurrentValue))
 {
   assert(!A_.empty());
   assert(A_.size() == x_bar_.size());
@@ -200,10 +230,15 @@ MarginalConstraint::MarginalConstraint(
   assert(b_.rows() > 0);
   assert(std::all_of(A_.begin(), A_.end(), [this](const auto& A){ return A.rows() == this->b_.rows(); }));  // NOLINT
   assert(std::all_of(boost::make_zip_iterator(boost::make_tuple(A_.begin(), first_variable)),
-                     boost::make_zip_iterator(std::make_pair(A_.end(), last_variable)),
-                     [](const auto& pair){ return pair.first.cols() == pair.second.localSize(); }));  // NOLINT
+                     boost::make_zip_iterator(boost::make_tuple(A_.end(), last_variable)),
+                     [](const boost::tuple<const fuse_core::MatrixXd&, const fuse_core::Variable&>& tuple)  // NOLINT
+                     {
+                       return static_cast<size_t>(tuple.get<0>().cols()) == tuple.get<1>().localSize();
+                     }));  // NOLINT
 }
 
 }  // namespace fuse_constraints
+
+BOOST_CLASS_EXPORT_KEY(fuse_constraints::MarginalConstraint);
 
 #endif  // FUSE_CONSTRAINTS_MARGINAL_CONSTRAINT_H

@@ -32,9 +32,12 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 #include <fuse_graphs/hash_graph.h>
+
 #include <fuse_core/uuid.h>
+#include <pluginlib/class_list_macros.h>
 
 #include <boost/iterator/transform_iterator.hpp>
+#include <boost/serialization/export.hpp>
 
 #include <algorithm>
 #include <functional>
@@ -47,8 +50,8 @@
 namespace fuse_graphs
 {
 
-HashGraph::HashGraph(const ceres::Problem::Options& options) :
-  problem_options_(options)
+HashGraph::HashGraph(const HashGraphParams& params) :
+  problem_options_(params.problem_options)
 {
 }
 
@@ -86,6 +89,14 @@ HashGraph& HashGraph::operator=(const HashGraph& other)
   std::swap(variables_, tmp.variables_);
   std::swap(variables_on_hold_, tmp.variables_on_hold_);
   return *this;
+}
+
+void HashGraph::clear()
+{
+  constraints_.clear();
+  constraints_by_variable_uuid_.clear();
+  variables_.clear();
+  variables_on_hold_.clear();
 }
 
 fuse_core::Graph::UniquePtr HashGraph::clone() const
@@ -279,7 +290,8 @@ void HashGraph::holdVariable(const fuse_core::UUID& variable_uuid, bool hold_con
 void HashGraph::getCovariance(
   const std::vector<std::pair<fuse_core::UUID, fuse_core::UUID>>& covariance_requests,
   std::vector<std::vector<double>>& covariance_matrices,
-  const ceres::Covariance::Options& options) const
+  const ceres::Covariance::Options& options,
+  const bool use_tangent_space) const
 {
   // Avoid doing a bunch of work if the request is empty
   if (covariance_requests.empty())
@@ -323,7 +335,14 @@ void HashGraph::getCovariance(
     }
     // Both variables exist. Continue processing.
     // Create the output covariance matrix
-    covariance_matrices[i].resize(variable1_iter->second->size() * variable2_iter->second->size());
+    if (use_tangent_space)
+    {
+      covariance_matrices[i].resize(variable1_iter->second->localSize() * variable2_iter->second->localSize());
+    }
+    else
+    {
+      covariance_matrices[i].resize(variable1_iter->second->size() * variable2_iter->second->size());
+    }
     // Add this covariance block to the container of all covariance blocks. This container is in sync with the
     // covariance_requests vector.
     auto& block = all_covariance_blocks.at(i);
@@ -345,16 +364,38 @@ void HashGraph::getCovariance(
     throw std::runtime_error("Could not compute requested covariance blocks.");
   }
   // Populate the computed covariance blocks into the output variable.
-  // We use the temporary structure to avoid repeated map lookups.
-  for (size_t i = 0; i < covariance_requests.size(); ++i)
+  if (use_tangent_space)
   {
-    if (!covariance.GetCovarianceBlock(all_covariance_blocks.at(i).first,
-                                       all_covariance_blocks.at(i).second,
-                                       covariance_matrices.at(i).data()))
+    for (size_t i = 0; i < covariance_requests.size(); ++i)
     {
-      throw std::runtime_error("Could not get covariance block for variable UUIDs " +
-                               fuse_core::uuid::to_string(covariance_requests.at(i).first) + " and " +
-                               fuse_core::uuid::to_string(covariance_requests.at(i).second) + ".");
+      const auto& block = all_covariance_blocks.at(i);
+      auto& output_matrix = covariance_matrices.at(i);
+      if (!covariance.GetCovarianceBlockInTangentSpace(block.first,
+                                                       block.second,
+                                                       output_matrix.data()))
+      {
+        const auto& request = covariance_requests.at(i);
+        throw std::runtime_error("Could not get covariance block for variable UUIDs " +
+                                 fuse_core::uuid::to_string(request.first) + " and " +
+                                 fuse_core::uuid::to_string(request.second) + ".");
+      }
+    }
+  }
+  else
+  {
+    for (size_t i = 0; i < covariance_requests.size(); ++i)
+    {
+      const auto& block = all_covariance_blocks.at(i);
+      auto& output_matrix = covariance_matrices.at(i);
+      if (!covariance.GetCovarianceBlock(block.first,
+                                         block.second,
+                                         output_matrix.data()))
+      {
+        const auto& request = covariance_requests.at(i);
+        throw std::runtime_error("Could not get covariance block for variable UUIDs " +
+                                 fuse_core::uuid::to_string(request.first) + " and " +
+                                 fuse_core::uuid::to_string(request.second) + ".");
+      }
     }
   }
 }
@@ -369,6 +410,24 @@ ceres::Solver::Summary HashGraph::optimize(const ceres::Solver::Options& options
   ceres::Solve(options, &problem, &summary);
   // Return the optimization summary
   return summary;
+}
+
+void HashGraph::print(std::ostream& stream) const
+{
+  stream << "HashGraph\n"
+         << "  constraints:\n";
+  for (const auto& constraint : constraints_)
+  {
+    stream << "   - " << *constraint.second << "\n";
+  }
+  stream << "  variables:\n";
+  for (const auto& variable : variables_)
+  {
+    const auto is_on_hold = variables_on_hold_.find(variable.first) != variables_on_hold_.end();
+
+    stream << "   - " << *variable.second << "\n"
+           << "     on_hold: " << std::boolalpha << is_on_hold << "\n";
+  }
 }
 
 void HashGraph::createProblem(ceres::Problem& problem) const
@@ -406,3 +465,6 @@ void HashGraph::createProblem(ceres::Problem& problem) const
 }
 
 }  // namespace fuse_graphs
+
+BOOST_CLASS_EXPORT_IMPLEMENT(fuse_graphs::HashGraph);
+PLUGINLIB_EXPORT_CLASS(fuse_graphs::HashGraph, fuse_core::Graph);

@@ -33,11 +33,18 @@
  */
 #include <fuse_core/constraint.h>
 
+#include <fuse_core/uuid.h>
+
+#include <initializer_list>
+#include <ostream>
+#include <string>
+
 
 namespace fuse_core
 {
 
-Constraint::Constraint(std::initializer_list<UUID> variable_uuid_list) :
+Constraint::Constraint(const std::string& source, std::initializer_list<UUID> variable_uuid_list) :
+  source_(source),
   uuid_(uuid::generate()),
   variables_(variable_uuid_list)
 {
